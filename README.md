@@ -36,6 +36,7 @@ Get the portable `textractor.exe` from [GitHub Releases](https://github.com/rtx1
 - Mouse wheel adjusts line/shape thickness, arrow size (including its shaft thickness), or typed-text size. A circle and pixel-size label preview the current size.
 - Rounded triangular arrowheads.
 - Compact color wheel with brightness and alpha/opacity sliders; the color button shows the selected color.
+- Screen-color eyedropper beside the color button: hover to preview the original frozen-screen pixel, then click to select its color and automatically copy its `#RRGGBB` HEX code. The sampled-code strip lets you copy it again. `Esc` cancels picking without closing the capture.
 - Typed text wraps onto new lines and the field expands downward without scrollbars. If available space runs out, text progressively shrinks to fit.
 - Drag a text-field edge to move it; drag its bottom-right square to resize it. Click outside the field to commit its contents.
 - Undo button and `Ctrl+Z` remove the latest annotation.

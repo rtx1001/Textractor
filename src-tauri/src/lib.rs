@@ -584,7 +584,7 @@ fn format_ocr_layout(result: &OcrResult) -> Result<String, String> {
 
 
 fn tray_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/32x32.png")).expect("valid embedded tray icon")
+    Image::from_bytes(include_bytes!("../icons/tray-icon.png")).expect("valid embedded tray icon")
 }
 
 pub fn run() {

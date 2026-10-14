@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUpRight, Camera, Check, Circle, Copy, Languages, LoaderCircle, Minus, Pencil, Save, ScanText, Square, Type, Undo2, X } from "lucide-react";
+import { ArrowUpRight, Camera, Check, Circle, Copy, Languages, LoaderCircle, Minus, Pencil, Pipette, Save, ScanText, Square, Type, Undo2, X } from "lucide-react";
 import type { AppConfig, CaptureResult, TranslationResult } from "../types";
 import { ColorWheel } from "../ColorWheel";
 import { multilingualOcr, containsNonEnglishScript } from "../multilingualOcr";
@@ -55,6 +55,11 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
   const [sizePreview, setSizePreview] = useState<Point | null>(null);
   const [previewSize, setPreviewSize] = useState(STROKE);
   const [colorOpen, setColorOpen] = useState(false);
+  const [pickingColor, setPickingColor] = useState(false);
+  const [colorSample, setColorSample] = useState<{ point: Point; hex: string } | null>(null);
+  const [pickedColor, setPickedColor] = useState<string | null>(null);
+  const pixels = useRef<HTMLCanvasElement | null>(null);
+  const colorCopySequence = useRef(0);
   const [textEntry, setTextEntry] = useState<TextEntry | null>(null);
   const textEntryRef = useRef<TextEntry | null>(null);
   const confirmedPointer = useRef<number | null>(null);
@@ -90,7 +95,7 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     start.current = null;
     action.current = false;
     setBounds(null); setSelected(false); setSource(null); setAnnotations([]); setDraft(null);
-    setTool(null); setColorOpen(false); changeText(null); setSizePreview(null); setResult(null); setBusy(false); setError(null); setNotice(null);
+    setTool(null); setColorOpen(false); setPickingColor(false); setColorSample(null); setPickedColor(null); changeText(null); setSizePreview(null); setResult(null); setBusy(false); setError(null); setNotice(null);
     setTranslation(null); setShowTranslation(false); setPhase(""); resultMarks.current = "";
   };
   const close = () => {
@@ -99,6 +104,7 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     start.current = null;
     setBounds(null); setSelected(false); setAnnotations([]); setDraft(null); changeText(null); setSizePreview(null);
     setResult(null); setBackground(null); setTool(null); setColorOpen(false); setError(null); setNotice(null);
+    setPickingColor(false); setColorSample(null); setPickedColor(null);
     setTranslation(null); setShowTranslation(false); setPhase(""); resultMarks.current = "";
     void api("cancel_capture");
   };
@@ -107,6 +113,43 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     if (textEntry) changeText(null);
     else if (draft) setDraft(null);
     else setAnnotations(items => items.slice(0, -1));
+  };
+
+  // Read the original frozen desktop, never the dimming layer or annotations.
+  useEffect(() => {
+    pixels.current = null;
+    if (!background) return;
+    let active = true;
+    const image = new Image();
+    image.onload = () => {
+      if (!active) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      canvas.getContext("2d", { willReadFrequently: true })?.drawImage(image, 0, 0);
+      pixels.current = canvas;
+    };
+    image.src = background;
+    return () => { active = false; pixels.current = null; };
+  }, [background]);
+
+  const sampleColor = (event: React.PointerEvent): string | null => {
+    const canvas = pixels.current;
+    if (!canvas) return null;
+    const x = clamp(Math.floor(event.clientX / viewport.width * canvas.width), 0, canvas.width - 1);
+    const y = clamp(Math.floor(event.clientY / viewport.height * canvas.height), 0, canvas.height - 1);
+    const rgb = canvas.getContext("2d")!.getImageData(x, y, 1, 1).data;
+    const hex = "#" + Array.from(rgb.slice(0, 3), value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
+    setColorSample({ point: { x: event.clientX, y: event.clientY }, hex });
+    return hex;
+  };
+  const copyColor = async (hex: string) => {
+    const id = session.current, sequence = ++colorCopySequence.current;
+    try {
+      await api("copy_text", { text: hex });
+      if (id !== session.current || sequence !== colorCopySequence.current) return;
+      setNotice("color");
+      window.setTimeout(() => { if (id === session.current && sequence === colorCopySequence.current) setNotice(value => value === "color" ? null : value); }, 1600);
+    } catch (e) { if (id === session.current) setError(`Could not copy color: ${e}`); }
   };
 
   useEffect(() => {
@@ -164,7 +207,8 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault(); event.stopPropagation();
-        if (tool || textEntryRef.current || draft || colorOpen) {
+        if (pickingColor) { setPickingColor(false); setColorSample(null); }
+        else if (tool || textEntryRef.current || draft || colorOpen) {
           commitText();
           if (draft) setAnnotations(items => [...items, draft]);
           setDraft(null); setTool(null); setColorOpen(false); setSizePreview(null);
@@ -222,9 +266,9 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
   const displayText = error || phase || (showTranslation && translation ? translation.text : result ? (result.text || result.error || "No text was detected in this area.") : "");
   const maxWidth = Math.max(1, viewport.width - 16);
   const textWidth = Math.max(...displayText.split("\n").map(line => line.length * 7.3 * extractedTextSize / 12 + 32), 0);
-  const panelWidth = Math.min(maxWidth, Math.max(558, bounds?.width || 0, textWidth));
+  const panelWidth = Math.min(maxWidth, Math.max(630, bounds?.width || 0, textWidth));
   const panelLeft = clamp(bounds?.left || 0, 8, viewport.width - panelWidth - 8);
-  const toolbarHeight = viewport.width < 574 ? 90 : 46;
+  const toolbarHeight = (viewport.width < 646 ? 90 : 46) + (pickedColor ? 36 : 0);
   const toolbarTop = clamp((bounds?.top || 0) + (bounds?.height || 0) + 8, 8, viewport.height - toolbarHeight - 8);
   const spaceBelow = viewport.height - toolbarTop - toolbarHeight - 8;
   const above = spaceBelow < Math.min(contentHeight || 150, 180) && toolbarTop - 8 > spaceBelow;
@@ -297,7 +341,7 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
   const run = async (kind: "extract" | "translate" | "copy" | "image" | "save") => {
     if (action.current || !bounds || !source) return;
     const id = session.current;
-    action.current = true; setBusy(true); setError(null); setTool(null); setColorOpen(false);
+    action.current = true; setBusy(true); setError(null); setTool(null); setColorOpen(false); setPickingColor(false); setColorSample(null);
     try {
       if (kind === "copy") {
         await api("copy_text", { text: showTranslation && translation ? translation.text : result?.text || "" });
@@ -343,7 +387,13 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     finally { if (id === session.current) { action.current = false; setBusy(false); setPhase(""); } }
   };
 
-  return <div className={`capture-overlay editor-overlay ${bounds ? "has-region" : ""}`} style={{ backgroundImage: background ? `url(${background})` : undefined, backgroundColor: "#171310" }} onContextMenu={e => { e.preventDefault(); close(); }} onPointerDown={selectStart} onPointerMove={selectMove} onPointerUp={selectFinish}>
+  return <div className={`capture-overlay editor-overlay ${bounds ? "has-region" : ""} ${pickingColor ? "picking-color" : ""}`} style={{ backgroundImage: background ? `url(${background})` : undefined, backgroundColor: "#171310" }} onContextMenu={e => { e.preventDefault(); if (pickingColor) { setPickingColor(false); setColorSample(null); } else close(); }} onPointerDownCapture={e => {
+    if (!pickingColor || (e.target as Element).closest(".capture-panel")) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.button !== 0) return;
+    const hex = sampleColor(e);
+    if (hex) { setColor(hex); setPickedColor(hex); setPickingColor(false); setColorSample(null); void copyColor(hex); }
+  }} onPointerMoveCapture={e => { if (pickingColor && !(e.target as Element).closest(".capture-panel")) { e.stopPropagation(); sampleColor(e); } }} onPointerDown={selectStart} onPointerMove={selectMove} onPointerUp={selectFinish}>
     {bounds && <>
       <div className="shade top" style={{ height: bounds.top }} />
       <div className="shade left" style={{ top: bounds.top, width: bounds.left, height: bounds.height }} />
@@ -358,12 +408,13 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
         <div className="capture-toolbar" role="toolbar" aria-label="Capture tools">
           <button data-tooltip="Read all text in the selected area. Keeps line breaks and spacing where possible." aria-label="Extract text" className="extract-tool" disabled={busy || !source} onClick={() => void run("extract")}>{busy ? <LoaderCircle className="spinning" size={19} /> : <ScanText size={19} />}</button>
           <i className="tool-divider" />
-          {tools.map(({ id, label, Icon }) => <button key={id} data-tooltip={id === "text" ? "Click inside the region to type. Wheel changes font size; drag the border to move or the bottom-right handle to resize. Click outside to confirm." : `${label}: click and drag inside the region. ${id === "arrow" ? "Wheel changes arrow size and thickness." : "Wheel changes outline thickness."} Click again or press Esc to turn off.`} aria-label={label} aria-pressed={tool === id} className={tool === id ? "active" : ""} disabled={busy || !source} onClick={() => { commitText(); setTool(current => current === id ? null : id); setSizePreview(null); }}><Icon size={18} /></button>)}
+          {tools.map(({ id, label, Icon }) => <button key={id} data-tooltip={id === "text" ? "Click inside the region to type. Wheel changes font size; drag the border to move or the bottom-right handle to resize. Click outside to confirm." : `${label}: click and drag inside the region. ${id === "arrow" ? "Wheel changes arrow size and thickness." : "Wheel changes outline thickness."} Click again or press Esc to turn off.`} aria-label={label} aria-pressed={tool === id} className={tool === id ? "active" : ""} disabled={busy || !source} onClick={() => { commitText(); setPickingColor(false); setColorSample(null); setTool(current => current === id ? null : id); setSizePreview(null); }}><Icon size={18} /></button>)}
           <button data-tooltip="Remove the most recent annotation. Keyboard shortcut: Ctrl+Z." aria-label="Undo" disabled={busy || (!annotations.length && !textEntry)} onClick={undo}><Undo2 size={18} /></button>
           <div className={`color-control ${toolbarTop < 260 ? "open-below" : ""}`}>
-            <button data-tooltip={colorOpen ? undefined : "Choose annotation color, brightness, and transparency. The swatch shows the current color."} aria-label="Tool color" aria-expanded={colorOpen} disabled={busy} onClick={() => setColorOpen(open => !open)}><span className="color-swatch" style={{ background: color, opacity: alpha }} /></button>
+            <button data-tooltip={colorOpen ? undefined : "Choose annotation color, brightness, and transparency. The swatch shows the current color."} aria-label="Tool color" aria-expanded={colorOpen} disabled={busy} onClick={() => { setPickingColor(false); setColorSample(null); setColorOpen(open => !open); }}><span className="color-swatch" style={{ background: color, opacity: alpha }} /></button>
             {colorOpen && <ColorWheel color={color} onChange={setColor} alpha={alpha} onAlphaChange={setAlpha} />}
           </div>
+          <button data-tooltip="Pick a color anywhere on the frozen screen. Click to use it and copy its HEX code. Esc cancels picking." aria-label="Pick screen color" aria-pressed={pickingColor} className={pickingColor ? "active" : ""} disabled={busy || !background} onClick={() => { commitText(); setTool(null); setDraft(null); setColorOpen(false); setSizePreview(null); setColorSample(null); setPickingColor(value => !value); }}><Pipette size={18} /></button>
           <i className="tool-divider" />
           <button data-tooltip="Copy the text currently shown: original OCR text or its translation." aria-label="Copy text" disabled={busy || !result?.text} onClick={() => void run("copy")}>{notice === "copy" ? <Check size={18} /> : <Copy size={18} />}</button>
           <button data-tooltip="Extract if needed, then translate offline into your Settings target language. Install missing packs in Settings → Translate." aria-label="Translate text" aria-busy={phase === "Translating offline…"} onClick={() => void run("translate")}><Languages size={18} /></button>
@@ -371,10 +422,12 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
           <button data-tooltip="Save the selected image and its annotations as a PNG file." aria-label="Save PNG" disabled={busy || !source} onClick={() => void run("save")}>{notice === "save" ? <Check size={18} /> : <Save size={18} />}</button>
           <button data-tooltip="Close capture. Esc first turns off an active tool; press Esc again to close." aria-label="Close capture" onClick={close}><X size={18} /></button>
         </div>
+        {pickedColor && <div className="picked-color-result" aria-live="polite"><span className="picked-color-swatch" style={{ background: pickedColor }} /><code>{pickedColor}</code><button data-tooltip="Copy this sampled HEX color code to the clipboard again." aria-label="Copy color code" onClick={() => void copyColor(pickedColor)}>{notice === "color" ? <Check size={14} /> : <Copy size={14} />}{notice === "color" ? "Copied" : "Copy HEX"}</button><button aria-label="Dismiss sampled color" data-tooltip="Hide the sampled color code." onClick={() => setPickedColor(null)}><X size={14} /></button></div>}
         {displayText && <div className={`editor-result ${result?.error || error ? "error-result" : ""}`} style={{ fontSize: extractedTextSize, lineHeight: `${extractedTextSize * 1.55}px`, height: resultHeight, overflowY: contentHeight > resultHeight + 1 ? "auto" : "hidden" }} aria-label={showTranslation ? "Translated text" : "Extracted text"}>{translation && !phase && !error && <button className="translation-view-toggle" data-tooltip="Switch between the original recognized text and its translation." onClick={() => setShowTranslation(value => !value)}>{showTranslation ? "Original" : "Translation"}</button>}{displayText}</div>}
       </section>}
       {sizePreview && <div className="thickness-preview" style={{ left: clamp(sizePreview.x, Math.max(40, previewSize / 2 + 8), viewport.width - Math.max(40, previewSize / 2 + 8)), top: clamp(sizePreview.y, Math.max(40, previewSize / 2 + 28), viewport.height - Math.max(40, previewSize / 2 + 8)) }}><span style={{ bottom: previewSize / 2 + 8 }}>{previewSize} px</span><i style={{ width: previewSize, height: previewSize, background: color, opacity: alpha }} /></div>}
       <div ref={contentMeasure} className="editor-result result-measure" style={{ fontSize: extractedTextSize, lineHeight: `${extractedTextSize * 1.55}px`, width: panelWidth - 2 }} aria-hidden="true">{translation && !phase && !error && <span className="translation-view-toggle">{showTranslation ? "Original" : "Translation"}</span>}{displayText}</div>
     </>}
+    {pickingColor && colorSample && <div className="color-sample-preview" style={{ left: clamp(colorSample.point.x + 18, 8, viewport.width - 142), top: clamp(colorSample.point.y + 22, 8, viewport.height - 46) }}><span style={{ background: colorSample.hex }} /><code>{colorSample.hex}</code></div>}
   </div>;
 }

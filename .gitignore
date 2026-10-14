@@ -16,4 +16,5 @@ testdata/*
 !testdata/translation-plan-tests.mjs
 !testdata/translation-tests.py
 !testdata/inspect-portable.ps1
+!testdata/generate-tray-icon.ps1
 

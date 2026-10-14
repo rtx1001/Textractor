@@ -47,6 +47,12 @@ html:has(.editor-overlay), body:has(.editor-overlay), #root:has(.editor-overlay)
 .editor-overlay .selection { border: 0; outline: 2px solid #f2be8d; box-shadow: 0 0 0 3px #0005; }
 .editor-overlay .selection.selected { cursor: default; }
 .editor-overlay .selection.drawing { cursor: crosshair; }
+.editor-overlay.picking-color, .editor-overlay.picking-color .selection { cursor: crosshair; }
+.color-sample-preview { position: fixed; z-index: 50; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #a97852; border-radius: 8px; background: #2b211a; color: #f5dcc7; box-shadow: 0 3px 14px #0006; }
+.color-sample-preview span, .picked-color-swatch { width: 20px; height: 20px; border: 1px solid #ffffff80; border-radius: 4px; flex-shrink: 0; }
+.picked-color-result { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 5px 8px; background: #2b211a; color: #f5dcc7; font-size: 12px; }
+.picked-color-result button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid #735239; border-radius: 5px; background: #3b2e23; color: #f5dcc7; cursor: pointer; }
+.picked-color-result button:hover { background: #57412e; }
 .annotation-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .annotation-input { position: absolute; z-index: 4; width: 240px; min-width: 40px; height: 80px; border: 1px dashed #f2be8d; border-radius: 3px; outline: none; background: #241e19db; color: #f2be8d; padding: 0; resize: none; font: 600 20px/1.25 "Segoe UI", sans-serif; user-select: text; }
 .capture-panel { position: fixed; z-index: 5; display: flex; flex-direction: column; border: 1px solid #73553e; border-radius: 10px; background: #241e19; box-shadow: 0 8px 30px #0007; cursor: default; }
