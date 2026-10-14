@@ -11,6 +11,7 @@ Get the portable `textractor.exe` from [GitHub Releases](https://github.com/rtx1
 ### Capture and tray
 
 - Runs in the background with a system tray icon; closing Settings keeps it running. Exit from the tray menu to quit.
+- Single-instance protection: launching another copy while Textractor is running exits quietly instead of creating a second tray icon or competing for its hotkey. Open Settings from the existing tray icon.
 - Customizable global shortcut (`Ctrl+Shift+2` by default), including PrintScreen combinations such as `Ctrl+Shift+PrintScreen`; shortcut availability depends on other apps and Windows reservations.
 - Capture from Settings or the tray, with optional Start with Windows.
 - Region selection on the monitor under the cursor, with multi-monitor and display-scaling support.

@@ -1,5 +1,6 @@
 use std::{borrow::Cow, io::Cursor, sync::{Mutex, atomic::{AtomicU64, Ordering}}};
 mod translation;
+mod instance;
 
 use arboard::{Clipboard, ImageData};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -602,6 +603,15 @@ pub fn run() {
         }));
         return;
     }
+    // Acquire before building windows, tray, autostart, or hotkeys. Diagnostics
+    // run independently so they can inspect an already-running portable app.
+    let _instance = if std::env::args().any(|arg| arg == "--portable-smoke") { None } else {
+        match instance::acquire("Local\\Textractor.Desktop.Instance") {
+            Ok(Some(guard)) => Some(guard),
+            Ok(None) => return,
+            Err(error) => { startup_message(&format!("Textractor could not check for an existing instance:\n\n{error}")); return; }
+        }
+    };
     if tauri::webview_version().is_err() {
         startup_message("Textractor needs Microsoft Edge WebView2 Runtime to display its interface.\n\nInstall the Evergreen Runtime from Microsoft's official site, then start Textractor again. No Textractor installer is needed.\n\nhttps://developer.microsoft.com/microsoft-edge/webview2/\n\nThis Windows 10/11 build is for 64-bit Intel/AMD PCs.");
         return;
