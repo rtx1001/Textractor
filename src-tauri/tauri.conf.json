@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Textractor",
+  "version": "0.3.3",
+  "identifier": "com.textractor.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Textractor",
+        "width": 420,
+        "height": 350,
+        "decorations": false,
+        "resizable": false,
+        "center": true
+      },
+      {
+        "label": "capture",
+        "url": "index.html",
+        "title": "Capture",
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "resizable": false
+      },
+      {
+        "label": "result",
+        "url": "index.html",
+        "title": "Extracted text",
+        "width": 390,
+        "height": 230,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "resizable": false
+      },
+      {
+        "label": "region",
+        "url": "index.html",
+        "title": "Captured region",
+        "width": 100,
+        "height": 100,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "focus": false,
+        "focusable": false,
+        "resizable": false
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": false,
+    "targets": [],
+    "icon": ["icons/icon.ico"],
+    "shortDescription": "Capture and extract text from anywhere on your screen"
+  }
+}

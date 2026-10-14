@@ -1,0 +1,47 @@
+[package]
+name = "textractor"
+version = "0.3.3"
+description = "Capture and extract text from anywhere on your screen"
+authors = ["Textractor"]
+edition = "2021"
+
+[lib]
+name = "textractor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+xcap = "0.7"
+image = { version = "0.25", default-features = false, features = ["png"] }
+arboard = "3.4"
+base64 = "0.22"
+windows = { version = "0.61", features = [
+  "Foundation",
+  "Graphics_Imaging",
+  "Media_Ocr",
+  "Storage_Streams",
+  "Win32_Foundation",
+  "Win32_System_WinRT",
+  "Win32_UI_WindowsAndMessaging"
+] }
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+

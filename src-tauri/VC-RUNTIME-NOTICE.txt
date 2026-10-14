@@ -1,0 +1,16 @@
+Microsoft Visual C++ runtime libraries, x64, version 14.44.35112
+Copyright Microsoft Corporation. All rights reserved.
+
+These unmodified release-mode redistributable files come from the Microsoft
+Visual Studio 2022 Community installation used to build Textractor. They are
+deployed app-locally only for the optional translation runtime, not installed
+into Windows or registered globally.
+
+Microsoft Software License Terms govern these Microsoft components.
+Redistribution information:
+https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files
+https://learn.microsoft.com/cpp/windows/deployment-in-visual-cpp
+
+Files: msvcp140.dll, msvcp140_1.dll, msvcp140_2.dll,
+msvcp140_atomic_wait.dll, msvcp140_codecvt_ids.dll,
+vcruntime140.dll, vcruntime140_1.dll, concrt140.dll.
