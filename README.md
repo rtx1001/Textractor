@@ -6,7 +6,12 @@ A lightweight Windows tray app for screen text extraction, annotations, and offl
 
 ## Screenshots
 
-<img src="docs/images/settings-general.png" alt="General settings: capture shortcut, automatic text copy, and Windows startup" width="420"> <img src="docs/images/settings-tools.png" alt="Tool settings: color, opacity, stroke width, arrow size, and text sizes" width="420">
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/settings-general.png" alt="General settings: capture shortcut, automatic text copy, and Windows startup" width="420"></td>
+    <td width="50%"><img src="docs/images/settings-tools.png" alt="Tool settings: color, opacity, stroke width, arrow size, and text sizes" width="420"></td>
+  </tr>
+</table>
 
 ![Region capture with extracted text and color controls](docs/images/capture.png)
 
