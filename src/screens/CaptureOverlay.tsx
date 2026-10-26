@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUpRight, Camera, Check, Circle, Copy, Languages, LoaderCircle, Minus, Pencil, Pipette, Save, ScanText, Square, Type, Undo2, X } from "lucide-react";
+import { ArrowUpRight, Camera, Check, Circle, Copy, Languages, LoaderCircle, Minus, Pencil, Pipette, Save, ScanText, Square, Type, Undo2, Video, X } from "lucide-react";
 import type { AppConfig, CaptureResult, TranslationResult } from "../types";
 import { ColorWheel } from "../ColorWheel";
 import { multilingualOcr, containsNonEnglishScript } from "../multilingualOcr";
@@ -142,11 +142,13 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     setColorSample({ point: { x: event.clientX, y: event.clientY }, hex });
     return hex;
   };
-  const copyColor = async (hex: string) => {
+  const copyColor = async (hex: string, dismiss = true) => {
+    setColorOpen(false);
     const id = session.current, sequence = ++colorCopySequence.current;
     try {
       await api("copy_text", { text: hex });
       if (id !== session.current || sequence !== colorCopySequence.current) return;
+      if (dismiss) { close(); return; }
       setNotice("color");
       window.setTimeout(() => { if (id === session.current && sequence === colorCopySequence.current) setNotice(value => value === "color" ? null : value); }, 1600);
     } catch (e) { if (id === session.current) setError(`Could not copy color: ${e}`); }
@@ -266,9 +268,9 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
   const displayText = error || phase || (showTranslation && translation ? translation.text : result ? (result.text || result.error || "No text was detected in this area.") : "");
   const maxWidth = Math.max(1, viewport.width - 16);
   const textWidth = Math.max(...displayText.split("\n").map(line => line.length * 7.3 * extractedTextSize / 12 + 32), 0);
-  const panelWidth = Math.min(maxWidth, Math.max(630, bounds?.width || 0, textWidth));
+  const panelWidth = Math.min(maxWidth, Math.max(666, bounds?.width || 0, textWidth));
   const panelLeft = clamp(bounds?.left || 0, 8, viewport.width - panelWidth - 8);
-  const toolbarHeight = (viewport.width < 646 ? 90 : 46) + (pickedColor ? 36 : 0);
+  const toolbarHeight = (viewport.width < 682 ? 90 : 46) + (pickedColor ? 36 : 0);
   const toolbarTop = clamp((bounds?.top || 0) + (bounds?.height || 0) + 8, 8, viewport.height - toolbarHeight - 8);
   const spaceBelow = viewport.height - toolbarTop - toolbarHeight - 8;
   const above = spaceBelow < Math.min(contentHeight || 150, 180) && toolbarTop - 8 > spaceBelow;
@@ -382,9 +384,22 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
           if (!saved) return;
         }
       }
-      if (id === session.current && kind !== "extract" && kind !== "translate") { setNotice(kind); window.setTimeout(() => setNotice(null), 1600); }
+      if (id === session.current && (kind === "copy" || kind === "image" || kind === "save")) close();
     } catch (e) { if (id === session.current) setError(String(e)); }
     finally { if (id === session.current) { action.current = false; setBusy(false); setPhase(""); } }
+  };
+  const recordRegion = async () => {
+    if (action.current || !source) return;
+    action.current = true; setBusy(true); setError(null); setColorOpen(false); commitText();
+    const id = session.current;
+    try {
+      const status = await api<{ installed: boolean }>("recording_status");
+      if (id !== session.current || closed.current) return;
+      if (!status.installed) { await api("open_recording_settings"); return; }
+      await api("start_recording", { fullScreen: false });
+      if (id === session.current) { reset(); setBackground(null); }
+    } catch (e) { if (id === session.current) setError(String(e)); }
+    finally { if (id === session.current) { action.current = false; setBusy(false); } }
   };
 
   return <div className={`capture-overlay editor-overlay ${bounds ? "has-region" : ""} ${pickingColor ? "picking-color" : ""}`} style={{ backgroundImage: background ? `url(${background})` : undefined, backgroundColor: "#171310" }} onContextMenu={e => { e.preventDefault(); if (pickingColor) { setPickingColor(false); setColorSample(null); } else close(); }} onPointerDownCapture={e => {
@@ -392,7 +407,7 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
     e.preventDefault(); e.stopPropagation();
     if (e.button !== 0) return;
     const hex = sampleColor(e);
-    if (hex) { setColor(hex); setPickedColor(hex); setPickingColor(false); setColorSample(null); void copyColor(hex); }
+    if (hex) { setColor(hex); setPickedColor(hex); setPickingColor(false); setColorSample(null); void copyColor(hex, false); }
   }} onPointerMoveCapture={e => { if (pickingColor && !(e.target as Element).closest(".capture-panel")) { e.stopPropagation(); sampleColor(e); } }} onPointerDown={selectStart} onPointerMove={selectMove} onPointerUp={selectFinish}>
     {bounds && <>
       <div className="shade top" style={{ height: bounds.top }} />
@@ -404,7 +419,7 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
         {selected && <svg className="annotation-layer" width={bounds.width} height={bounds.height} viewBox={`0 0 ${bounds.width} ${bounds.height}`} fill="none" stroke={INK} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round">{annotations.map((annotation, i) => <g key={i} stroke={annotation.color} opacity={annotation.alpha ?? 1} strokeWidth={annotation.thickness ?? STROKE}><Mark annotation={annotation} /></g>)}{draft && <g stroke={draft.color} opacity={draft.alpha ?? 1} strokeWidth={draft.thickness ?? STROKE}><Mark annotation={draft} /></g>}</svg>}
         {textEntry && <TextAnnotationEditor entry={textEntry} regionWidth={bounds.width} regionHeight={bounds.height} onChange={changeText} />}
       </div>
-      {selected && <section className={`capture-panel ${above ? "text-above" : ""}`} style={{ left: panelLeft, top: above ? toolbarTop - resultHeight : toolbarTop, width: panelWidth }} onPointerDown={e => e.stopPropagation()} onPointerMove={e => e.stopPropagation()} onPointerUp={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()}>
+      {selected && <section className={`capture-panel ${above ? "text-above" : ""}`} style={{ left: panelLeft, top: above ? toolbarTop - resultHeight : toolbarTop, width: panelWidth }} onClickCapture={event => { if ((event.target as Element).closest("button") && !(event.target as Element).closest(".color-control")) setColorOpen(false); }} onPointerDown={e => e.stopPropagation()} onPointerMove={e => e.stopPropagation()} onPointerUp={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()}>
         <div className="capture-toolbar" role="toolbar" aria-label="Capture tools">
           <button data-tooltip="Read all text in the selected area. Keeps line breaks and spacing where possible." aria-label="Extract text" className="extract-tool" disabled={busy || !source} onClick={() => void run("extract")}>{busy ? <LoaderCircle className="spinning" size={19} /> : <ScanText size={19} />}</button>
           <i className="tool-divider" />
@@ -420,6 +435,7 @@ export function CaptureOverlay({ api = invoke, previewBackground }: { api?: Api;
           <button data-tooltip="Extract if needed, then translate offline into your Settings target language. Install missing packs in Settings → Translate." aria-label="Translate text" aria-busy={phase === "Translating offline…"} onClick={() => void run("translate")}><Languages size={18} /></button>
           <button data-tooltip="Copy the selected image, including your annotations, to the clipboard." aria-label="Copy image" disabled={busy || !source} onClick={() => void run("image")}>{notice === "image" ? <Check size={18} /> : <Camera size={18} />}</button>
           <button data-tooltip="Save the selected image and its annotations as a PNG file." aria-label="Save PNG" disabled={busy || !source} onClick={() => void run("save")}>{notice === "save" ? <Check size={18} /> : <Save size={18} />}</button>
+          <button data-tooltip="Record this region as MP4 using your Recorder audio settings. First use opens Settings to approve the FFmpeg download. Annotations are not included in video." aria-label="Record region" disabled={busy || !source} onClick={() => void recordRegion()}><Video size={18} /></button>
           <button data-tooltip="Close capture. Esc first turns off an active tool; press Esc again to close." aria-label="Close capture" onClick={close}><X size={18} /></button>
         </div>
         {pickedColor && <div className="picked-color-result" aria-live="polite"><span className="picked-color-swatch" style={{ background: pickedColor }} /><code>{pickedColor}</code><button data-tooltip="Copy this sampled HEX color code to the clipboard again." aria-label="Copy color code" onClick={() => void copyColor(pickedColor)}>{notice === "color" ? <Check size={14} /> : <Copy size={14} />}{notice === "color" ? "Copied" : "Copy HEX"}</button><button aria-label="Dismiss sampled color" data-tooltip="Hide the sampled color code." onClick={() => setPickedColor(null)}><X size={14} /></button></div>}

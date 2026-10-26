@@ -1,6 +1,9 @@
 use std::{borrow::Cow, io::Cursor, sync::{Mutex, atomic::{AtomicU64, Ordering}}};
 mod translation;
 mod instance;
+mod recording;
+mod save_files;
+mod recording_audio;
 
 use arboard::{Clipboard, ImageData};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -152,6 +155,7 @@ fn cursor_position() -> (i32, i32) {
 }
 
 fn show_capture(app: &tauri::AppHandle) -> Result<(), String> {
+    if recording::is_active(app) { recording::show_controls(app); return Ok(()); }
     app.state::<AppState>().capture_generation.fetch_add(1, Ordering::SeqCst);
     let window = app.get_webview_window("capture").ok_or("Capture window is unavailable")?;
     window.hide().map_err(|e| e.to_string())?;
@@ -307,18 +311,36 @@ fn copy_last_image(state: tauri::State<AppState>) -> Result<(), String> {
 #[tauri::command]
 async fn save_last_image(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
     let image = state.last_image.lock().map_err(|e| e.to_string())?.clone().ok_or("No captured image")?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let selected = app.dialog().file()
+    let generation = state.capture_generation.load(Ordering::SeqCst);
+    let capture = app.get_webview_window("capture").ok_or("Capture window unavailable")?;
+    // Fullscreen/always-on-top capture windows can cover Windows file dialogs.
+    // Snapshot the image first, then hide the overlay before opening the dialog.
+    capture.hide().map_err(|e| e.to_string())?;
+    let dialog_app = app.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        let suggested = save_files::dialog_default("image", "textractor-capture.png");
+        let mut dialog = dialog_app.dialog().file();
+        if let Some(parent) = suggested.parent().filter(|p| p.is_dir()) { dialog = dialog.set_directory(parent); }
+        let selected = dialog
             .set_title("Save captured image")
-            .set_file_name("textractor-capture.png")
+            .set_file_name(suggested.file_name().unwrap_or_default().to_string_lossy())
             .add_filter("PNG image", &["png"])
             .blocking_save_file();
         let Some(selected) = selected else { return Ok(None); };
         let mut path = selected.into_path().map_err(|e| e.to_string())?;
         if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("png")) { path.set_extension("png"); }
-        DynamicImage::ImageRgba8(image).save_with_format(&path, ImageFormat::Png).map_err(|e| e.to_string())?;
+        let path = save_files::write_unique(&path, |file| DynamicImage::ImageRgba8(image).write_to(file, ImageFormat::Png).map_err(|e| e.to_string()))?;
+        save_files::remember("image", &path);
+        save_files::reveal(&path);
         Ok(Some(path.to_string_lossy().into_owned()))
-    }).await.map_err(|e| e.to_string())?
+    }).await.map_err(|e| e.to_string()).and_then(|result| result);
+    // Cancel/failure preserves the annotations and allows a retry. Never restore
+    // an old overlay over a newer capture session.
+    if !matches!(&outcome, Ok(Some(_))) && state.capture_generation.load(Ordering::SeqCst) == generation {
+        let _ = capture.show();
+        let _ = capture.set_focus();
+    }
+    outcome
 }
 
 #[tauri::command]
@@ -618,6 +640,7 @@ pub fn run() {
     }
     let outcome = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(recording::RecordingState::default())
         .plugin(tauri_plugin_autostart::Builder::new().arg("--hidden").app_name("Textractor").build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed { let _ = show_capture(app); }
@@ -630,24 +653,30 @@ pub fn run() {
             tray_capture_item: Mutex::new(None),
             pending_screen: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![get_config, save_config, save_tool_config, get_last_result, get_capture_background, start_capture, hide_settings, drag_settings, cancel_capture, prepare_capture, update_capture_image, extract_capture_text, accept_ocr_text, translate_text, translation::translation_packs, translation::manage_translation_pack, close_result, copy_text, copy_last_image, save_last_image])
+        .invoke_handler(tauri::generate_handler![get_config, save_config, save_tool_config, get_last_result, get_capture_background, start_capture, hide_settings, drag_settings, cancel_capture, prepare_capture, update_capture_image, extract_capture_text, accept_ocr_text, translate_text, translation::translation_packs, translation::manage_translation_pack, close_result, copy_text, copy_last_image, save_last_image, recording::recording_status, recording::save_recording_options, recording::install_recording_engine, recording::open_recording_settings, recording::start_recording, recording::pause_recording, recording::stop_recording, recording::save_recording, recording::cancel_recording, recording::hide_recording_controls, recording::drag_recording_controls])
         .setup(|app| {
             let smoke = std::env::args().any(|arg| arg == "--portable-smoke");
             let configured_hotkey = app.state::<AppState>().config.lock().expect("config lock").hotkey.clone();
             let capture = MenuItem::with_id(app, "capture", "Capture text", true, Some(configured_hotkey.as_str()))?;
             let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let recorder = MenuItem::with_id(app, "recorder", "Screen recorder", true, None::<&str>)?;
+            let stop = MenuItem::with_id(app, "stop-recording", "Stop recording", true, None::<&str>)?;
+            let pause = MenuItem::with_id(app, "pause-recording", "Pause / resume recording", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Textractor", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&capture, &settings, &quit])?;
+            let menu = Menu::with_items(app, &[&capture, &recorder, &pause, &stop, &settings, &quit])?;
             let handle = app.handle().clone();
-            TrayIconBuilder::new().icon(tray_icon()).tooltip("Textractor").menu(&menu)
+            TrayIconBuilder::with_id("textractor").icon(tray_icon()).tooltip("Textractor").menu(&menu)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "capture" => { let _ = show_capture(app); },
                     "settings" => show_settings(app),
-                    "quit" => app.exit(0),
+                    "recorder" => { if recording::is_active(app) { recording::show_controls(app); } else { recording::open_recording_settings(app.clone()); } },
+                    "stop-recording" => { let app = app.clone(); tauri::async_runtime::spawn(async move { let _ = recording::stop_recording(app).await; }); },
+                    "pause-recording" => { let app = app.clone(); tauri::async_runtime::spawn(async move { let _ = recording::pause_recording(app).await; }); },
+                    "quit" => { let app = app.clone(); tauri::async_runtime::spawn(async move { if recording::is_active(&app) { let _ = recording::stop_recording(app.clone()).await; } app.exit(0); }); },
                     _ => {}
                 })
                 .on_tray_icon_event(move |_tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event { show_settings(&handle); }
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event { if recording::is_active(&handle) { recording::show_controls(&handle); } else { show_settings(&handle); } }
                 }).build(app)?;
             *app.state::<AppState>().tray_capture_item.lock().expect("tray item lock") = Some(capture);
             let hotkey = app.state::<AppState>().config.lock().expect("config lock").hotkey.clone();

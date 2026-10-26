@@ -17,4 +17,5 @@ testdata/*
 !testdata/translation-tests.py
 !testdata/inspect-portable.ps1
 !testdata/generate-tray-icon.ps1
+!testdata/recording-ui-tests.mjs
 

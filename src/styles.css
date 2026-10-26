@@ -1,4 +1,28 @@
 :root { font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; color: #f2ece6; background: transparent; font-synthesis: none; }
+.recorder-settings { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.recorder-settings .compact-hint { margin: 0; font-size: 12px; line-height: 1.4; }
+.recorder-install, .recorder-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.recorder-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: center; }
+.recorder-options > label.compact-field { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.recorder-options > label.compact-field .switch { flex-shrink: 0; }
+.recorder-audio { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 12px; }
+.recorder-audio > div { display: flex; justify-content: space-between; align-items: center; min-height: 30px; gap: 6px; }
+.recorder-actions { display: flex; gap: 8px; }
+.recorder-actions button { flex: 1; padding: 8px; border: 1px solid #745238; border-radius: 7px; color: #f2be8d; background: #36281d; cursor: pointer; font: inherit; font-size: 12px; }
+.recorder-actions button:disabled, .recorder-install:disabled { opacity: .5; cursor: default; }
+.recorder-error { font-size: 12px; color: #ffaaa0; overflow-wrap: anywhere; max-height: 34px; overflow: auto; }
+html:has(.recording-controls), body:has(.recording-controls), #root:has(.recording-controls) { height: 100%; min-height: 0; overflow: hidden; }
+.recording-controls { height: 100%; padding: 10px; border: 1px solid #94704f; border-radius: 8px; background: #241c16; color: #f2be8d; cursor: move; }
+.recording-controls-row { display: flex; align-items: center; gap: 8px; height: 30px; }
+.recording-controls-row strong { font: 600 15px Consolas, monospace; }
+.recording-phase { flex: 1; font-size: 11px; color: #d2b79f; }
+.recording-controls-row button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid #735238; border-radius: 6px; background: #3b2a1c; color: #f2be8d; cursor: pointer; }
+.recording-controls-row button:disabled { opacity: .4; }
+.recording-dot { width: 7px; height: 7px; border-radius: 50%; background: #c69a73; }
+.recording-dot.live { background: #ff7967; box-shadow: 0 0 0 3px #ff79671c; }
+.recording-message { font-size: 11px; color: #bfa38d; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recording-outline { position: fixed; inset: 0; border: 1px solid #f2be8d70; pointer-events: none; background: transparent; }
+html:has(.recording-outline), body:has(.recording-outline), #root:has(.recording-outline) { background: transparent; overflow: hidden; height: 100%; min-height: 0; }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-height: 100%; }
 button { font: inherit; }
